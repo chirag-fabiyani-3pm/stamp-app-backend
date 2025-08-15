@@ -3,7 +3,13 @@
 This directory contains the decoupled Node.js backend application for the Stamp App.
 It exposes the following API endpoints:
 - `/api/philaguide`
-- `/api/search-by-image`
+- `/api/realtime-session`
+- `/api/realtime-stream`
+- `/api/realtime-voice`
+- `/api/speech-to-text`
+- `/api/voice-chat`
+- `/api/voice-stamp-search`
+- `/api/voice-synthesis` (POST and GET)
 
 ## Setup
 
