@@ -11,6 +11,7 @@ const { handleVoiceStampSearchRequest } = require('../controllers/voiceStampSear
 const { handleVoiceSynthesisRequest } = require('../controllers/voiceSynthesisController');
 const { getAvailableVoices } = require('../controllers/voiceSynthesisController');
 const { postRealtimeWebrtc, putRealtimeWebrtc, getRealtimeWebsocketReady } = require('../controllers/realtimeWebrtcController');
+const { handlePhilaguideV2Working, getPhilaguideV2WorkingStatus } = require('../controllers/philaguideV2WorkingController');
 
 const router = express.Router();
 
@@ -21,6 +22,10 @@ router.get('/', (req, res) => {
 // Health check for philaguide (matches Next.js GET)
 router.get('/api/philaguide', getPhilaguideHealth);
 router.post('/api/philaguide', handlePhilaguideRequest);
+
+// Philaguide V2 Working endpoints (mirrors Next.js api/philaguide-v2/working)
+router.post('/api/philaguide-v2/working', handlePhilaguideV2Working);
+router.get('/api/philaguide-v2/working', getPhilaguideV2WorkingStatus);
 
 router.post('/api/search-by-image', upload.single('image'), handleImageSearchRequest);
 
