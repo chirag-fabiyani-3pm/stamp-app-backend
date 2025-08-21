@@ -1015,6 +1015,16 @@ Focus on the STORY, not the DATA.`
     }
 }
 
+function getPhilaguideHealth(req, res) {
+    return res.json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        assistantId: require('../utils/openai').ASSISTANT_ID,
+        timeout: require('../utils/openai').TIMEOUT_MS,
+    });
+}
+
 module.exports = {
     handlePhilaguideRequest,
+    getPhilaguideHealth,
 };

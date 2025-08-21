@@ -331,6 +331,11 @@ Keep it short, natural, and conversational!`
     }
 }
 
+function getVoiceChatTest(req, res) {
+    return res.json({ message: 'Voice chat API is working!' });
+}
+
 module.exports = {
     handleVoiceChatRequest,
+    getVoiceChatTest,
 };

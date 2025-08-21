@@ -4,26 +4,16 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 async function handleRealtimeVoiceRequest(req, res) {
     try {
-        const { message, conversationHistory = [], sessionId, voice = 'alloy' } = req.body;
+        const { voice = 'alloy', instructions } = req.body;
 
-        console.log('🎤 Realtime voice chat request:', {
-            message: message ? message.substring(0, 50) + '...' : 'No message',
-            historyLength: conversationHistory.length,
-            sessionId,
-            voice
-        });
+        console.log('🎤 Realtime voice chat request (session create):', { voice, instructions: instructions ? instructions.substring(0, 50) + '...' : 'Default' });
 
-        if (!message) {
-            return res.status(400).json({
-                success: false,
-                error: 'No message provided'
-            });
-        }
-
-        const messages = [
-            {
-                role: 'system',
-                content: `You are a knowledgeable stamp collecting expert specializing in conversational responses for voice synthesis. 
+        // Create a realtime voice session similar to Next.js api/realtime-voice
+        const session = await openai.beta.realtime.sessions.create({
+            model: 'gpt-4o-realtime-preview',
+            voice: voice,
+            modalities: ['audio', 'text'],
+            instructions: instructions || `You are a knowledgeable stamp collecting expert specializing in conversational responses for voice synthesis. 
 
 IMPORTANT GUIDELINES:
 - Provide natural, conversational responses suitable for speech
@@ -37,35 +27,29 @@ IMPORTANT GUIDELINES:
 - Maintain conversation context from previous messages
 - Reference previous topics when relevant to show continuity
 - Keep responses concise but informative (2-3 sentences max for voice)
-- Always respond in a natural, conversational manner suitable for voice synthesis`
-            },
-            ...conversationHistory,
-            { role: 'user', content: message }
-        ];
-
-        const completion = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: messages,
-            max_tokens: 150,
-            temperature: 0.7
+- Always respond in a natural, conversational manner suitable for voice synthesis`,
+            input_audio_format: 'pcm16',
+            output_audio_format: 'pcm16',
+            input_audio_transcription: { model: 'whisper-1' },
+            turn_detection: { type: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 200 },
+            temperature: 0.8,
+            speed: 1.0,
+            max_response_output_tokens: 200
         });
-
-        const aiResponse = completion.choices[0]?.message?.content || 'I apologize, but I cannot provide a response at the moment.';
-
-        console.log('🎤 AI response generated:', aiResponse.substring(0, 50) + '...');
 
         return res.json({
             success: true,
-            response: aiResponse,
-            conversationLength: conversationHistory.length + 2,
-            sessionId: sessionId || `session_${Date.now()}`
+            sessionId: session.id,
+            clientSecret: session.client_secret?.value || session.client_secret,
+            backendWebRTCUrl: `/api/realtime-webrtc/${session.id}`,
+            response: 'Session created successfully, connect via WebRTC for real-time audio streaming'
         });
 
     } catch (error) {
         console.error('❌ Realtime voice API error:', error);
         return res.status(500).json({
             success: false,
-            error: 'Failed to process voice message',
+            error: 'Failed to create realtime voice session',
             details: error instanceof Error ? error.message : 'Unknown error'
         });
     }
