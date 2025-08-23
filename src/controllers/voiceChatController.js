@@ -22,7 +22,7 @@ async function handleVoiceChatRequest(req, res) {
         console.log('🔍 Checking stamp knowledge base for:', message);
 
         try {
-            const stampResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000'}/api/philaguide`, {
+            const stampResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080'}/api/philaguide`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

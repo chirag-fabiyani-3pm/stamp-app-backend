@@ -12,8 +12,9 @@ async function handleVoiceStampSearchRequest(req, res) {
 
         console.log('🔍 Voice stamp search query:', query);
 
+        // Search the vector store for stamps
         const searchResponse = await openai.beta.assistants.files.search(
-            'vs_68a700c721648191a8f8bd76ddfcd860', // Align with Next.js vector store ID
+            'vs_68a700c721648191a8f8bd76ddfcd860', // Your vector store ID
             {
                 query: query,
                 max_results: 5
@@ -22,10 +23,14 @@ async function handleVoiceStampSearchRequest(req, res) {
 
         console.log('🔍 Found stamps:', searchResponse.data.length);
 
+        // Process the search results
         const stamps = searchResponse.data.map((item) => {
+            // Extract stamp information from the search result
             const content = item.content?.[0]?.text?.value || '';
 
+            // Try to parse stamp data from the content
             try {
+                // Look for JSON-like content in the text
                 const jsonMatch = content.match(/\{[\s\S]*\}/);
                 if (jsonMatch) {
                     const stampData = JSON.parse(jsonMatch[0]);
@@ -41,8 +46,10 @@ async function handleVoiceStampSearchRequest(req, res) {
                     };
                 }
             } catch (e) {
+                // If JSON parsing fails, return basic info
             }
 
+            // Fallback to basic content extraction
             return {
                 id: item.id,
                 title: 'Stamp Found',
@@ -65,6 +72,7 @@ async function handleVoiceStampSearchRequest(req, res) {
     } catch (error) {
         console.error('❌ Voice stamp search failed:', error);
 
+        // Return a fallback response
         return res.json({
             success: false,
             stamps: [],

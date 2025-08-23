@@ -45,11 +45,6 @@ class OpenAIWebSocketServer {
 
         // Handle WebSocket connections
         this.wss.on('connection', this.handleConnection.bind(this))
-
-        // Start the server
-        this.httpServer.listen(this.port, () => {
-            console.log(`🎤 WebSocket Server: Listening on port ${this.port}`)
-        })
     }
 
     async handleConnection(ws, req) {
