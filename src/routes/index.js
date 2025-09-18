@@ -12,6 +12,7 @@ const { handleVoiceSynthesisRequest } = require('../controllers/voiceSynthesisCo
 const { getAvailableVoices } = require('../controllers/voiceSynthesisController');
 const { postRealtimeWebrtc, putRealtimeWebrtc, getRealtimeWebsocketReady } = require('../controllers/realtimeWebrtcController');
 const { handlePhilaguideV2Working, getPhilaguideV2WorkingStatus } = require('../controllers/philaguideV2WorkingController');
+const { handleVoiceVectorSearchRequest, getVoiceVectorSearch } = require('../controllers/voiceVectorSearchController');
 
 const router = express.Router();
 
@@ -50,5 +51,8 @@ router.post('/api/voice-stamp-search', handleVoiceStampSearchRequest);
 
 router.post('/api/voice-synthesis', handleVoiceSynthesisRequest);
 router.get('/api/voice-synthesis', getAvailableVoices);
+
+router.post('/api/voice-vector-search', handleVoiceVectorSearchRequest);
+router.get('/api/voice-vector-search', getVoiceVectorSearch);
 
 module.exports = router;

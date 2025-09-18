@@ -15,13 +15,13 @@ function generateStampCard(stamp) {
     return {
         type: 'card',
         id: stamp.Id || stamp.id,
-        title: stamp.Name || stamp.StampCatalogCode || 'Stamp',
+        title: stamp.stamp_core?.name || stamp.name || stamp.Name || stamp.catalogNumber || stamp.StampCatalogCode || 'Stamp',
         subtitle: subtitle,
         image: imageUrl,
         content: [
             {
                 section: 'Overview',
-                text: `${stamp.Name} from ${stamp.Country}, issued in ${year}. Denomination: ${denomination}. Color: ${stamp.Color || 'Unknown'}.`,
+                text: `${stamp.stamp_core?.name || stamp.name || stamp.Name} from ${stamp.country || stamp.Country}, issued in ${year}. Denomination: ${denomination}. Color: ${stamp.color || stamp.Color || 'Unknown'}.`
             },
             {
                 section: 'Details',
@@ -45,19 +45,38 @@ function generateStampCarousel(stamps) {
         items: stamps.map(stamp => {
             const year = stamp.IssueYear || (stamp.IssueDate ? stamp.IssueDate.split('-')[0] : 'Unknown');
             const denomination = `${stamp.DenominationValue}${stamp.DenominationSymbol}`;
+            const subtitle = `${stamp.country || stamp.Country} • ${year} • ${denomination}`
 
-            const imageUrl = stamp.StampImageUrl || stamp.image || stamp.StampImage || '/images/stamps/no-image-available.png';
+            // Handle different possible image URL field names
+            const imageUrl = stamp.stampImageUrl || stamp.StampImageUrl || stamp.image || stamp.StampImage || '/images/stamps/no-image-available.png'
 
             return {
                 id: stamp.Id || stamp.id,
-                title: stamp.Name || stamp.StampCatalogCode || 'Stamp',
-                subtitle: `${stamp.Country} • ${year}`,
+                title: stamp.stamp_core?.name || stamp.name || stamp.Name || stamp.catalogNumber || stamp.StampCatalogCode || 'Stamp',
+                subtitle,
                 image: imageUrl,
-                summary: `${denomination} ${stamp.Color || 'Unknown'}`,
+                content: [
+                    {
+                        section: 'Overview',
+                        text: `${stamp.stamp_core?.name || stamp.name || stamp.Name} from ${stamp.country || stamp.Country}, issued in ${year}. Denomination: ${denomination}. Color: ${stamp.color || stamp.Color || 'Unknown'}.`
+                    },
+                    {
+                        section: 'Details',
+                        details: [
+                            { label: 'Catalog Code', value: stamp.catalogNumber || stamp.StampCatalogCode || 'N/A' },
+                            { label: 'Issue Date', value: stamp.issueDate || stamp.IssueDate || 'N/A' },
+                            { label: 'Color', value: stamp.color || stamp.Color || 'N/A' },
+                            { label: 'Paper Type', value: stamp.paperType || stamp.PaperType || 'N/A' }
+                        ]
+                    }
+                ],
+                significance: `A ${stamp.color || stamp.Color || 'colorful'} stamp from ${stamp.country || stamp.Country} issued in ${year}.`,
+                specialNotes: stamp.seriesName || stamp.SeriesName ? `Part of the ${stamp.seriesName || stamp.SeriesName} series.` : '',
+                summary: `${denomination} ${stamp.color || stamp.Color || 'Unknown'}`,
                 marketValue: 'Value varies by condition',
                 quickFacts: [
-                    `${stamp.Country} ${year}`,
-                    stamp.Color || 'Unknown',
+                    `${stamp.country || stamp.Country} ${year}`,
+                    stamp.color || stamp.Color || 'Unknown',
                     denomination,
                 ],
             };
