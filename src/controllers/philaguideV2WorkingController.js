@@ -23,6 +23,14 @@ async function handlePhilaguideV2Working(req, res) {
                 error: 'Message is required and must be a string'
             });
         }
+
+        if (message.length > 2000) {
+            return res.status(400).json({
+                success: false,
+                error: 'Message is too long. Please keep your questions under 2000 characters.'
+            });
+        }
+
         if (!sessionId || typeof sessionId !== 'string') {
             return res.status(400).json({
                 success: false,
@@ -98,6 +106,7 @@ Be precise, conversational, educational, and patient.
 - Never fabricate or mix fields
 - Cards only when all Primary Fields exist
 - Base-first rule: if varieties exist, always show the base issue first, then varieties
+- COMPARISON REQUESTS: When user asks to "compare", "compare both", or "show comparison" → Return ONLY JSON with mode: "comparison" (NO text, NO explanations)
 
 # VARIETY HANDLING
 
@@ -186,6 +195,15 @@ In the Description field, explicitly state:
 ## Carousel (2–4)
 Repeat the block above for each card (Base first, then Varieties).
 
+## Comparison
+When user asks to compare stamps, return ONLY this JSON format (NO markdown, NO text, NO explanations):
+{
+  "mode": "comparison",
+  "stampIds": ["[stampId1]", "[stampId2]", "[stampId3]"]
+}
+
+CRITICAL: For comparison requests, do NOT provide text descriptions or explanations. ONLY return the JSON structure above.
+
 ## Clarifying Questions
 
 - Ask up to 2 clarifying questions only when the query is ambiguous
@@ -207,6 +225,7 @@ Repeat the block above for each card (Base first, then Varieties).
 - You must output a JSON object that adheres strictly to the provided schema
 - When mode = "clarify", populate "clarifyingQuestions" (1–2 items) and leave "cards" empty
 - When mode = "cards", populate up to 4 card objects (Base first, then Varieties) and leave "clarifyingQuestions" empty
+- When mode = "comparison", populate "stampIds" array and leave "cards" and "clarifyingQuestions" empty
 - When mode = "educational", populate "educationalText" and leave "cards" and "clarifyingQuestions" empty
 
 ## Educational Text
@@ -256,6 +275,25 @@ Use for general/value/knowledge queries.
                     }
                 }
 
+                // Fallback: Try to extract comparison data from text response for compare requests
+                if (!structured && (response.output_text.toLowerCase().includes('compare') ||
+                    response.output_text.toLowerCase().includes('comparison'))) {
+
+                    console.log('🔧 Attempting to extract comparison data from text response')
+
+                    // Try to extract stamp IDs from the text response
+                    const stampIdMatches = response.output_text.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/gi)
+
+                    if (stampIdMatches && stampIdMatches.length > 0) {
+                        structured = {
+                            mode: "comparison",
+                            stampIds: stampIdMatches.slice(0, 3) // Limit to 3 stamps
+                        }
+
+                        console.log('✅ Successfully extracted comparison data from text:', structured)
+                    }
+                }
+
                 if (structured && typeof structured === 'object' && structured.mode) {
                     if (structured.mode === 'clarify' && Array.isArray(structured.clarifyingQuestions)) {
                         const questions = structured.clarifyingQuestions.filter(Boolean)
@@ -280,6 +318,12 @@ Use for general/value/knowledge queries.
 
                         const baseFirst = structured.cards.slice().sort((a, b) => (a.isBase === b.isBase) ? 0 : (a.isBase ? -1 : 1))
                         contentText = baseFirst.map(toCardBlock).join('\n\n')
+                    } else if (structured.mode === 'comparison' && Array.isArray(structured.stampIds)) {
+                        // Handle comparison requests
+                        const stampIds = structured.stampIds.filter(Boolean)
+                        if (stampIds.length > 0) {
+                            contentText = `Opening comparison view for ${stampIds.length} stamp${stampIds.length > 1 ? 's' : ''}...`
+                        }
                     } else if (structured.mode === 'educational' && typeof structured.educationalText === 'string') {
                         contentText = structured.educationalText
                     }
