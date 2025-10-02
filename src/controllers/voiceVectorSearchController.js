@@ -6,8 +6,9 @@ const openai = new OpenAI({
 
 const VECTOR_STORE_ID = 'vs_68a700c721648191a8f8bd76ddfcd860'
 
-// Session management for context - maps sessionId to previousResponseId
+// Session management for context - maps sessionId to previousResponseId and stamp context
 const activeSessions = new Map()
+const sessionStampContext = new Map()
 
 // Request deduplication - prevent multiple identical requests
 const activeRequests = new Map()
@@ -40,11 +41,16 @@ async function handleVoiceVectorSearchRequest(req, res) {
             })
         }
 
+        // Get previous stamp context for this session
+        const previousStamps = sessionStampContext.get(sessionId) || []
+        const recentStamps = previousStamps.filter(stamp => Date.now() - stamp.timestamp < 600000) // 10 minutes
+
         console.log('🎤 Voice vector search request:', {
             transcript: transcript.substring(0, 100) + (transcript.length > 100 ? '...' : ''),
             sessionId,
             mode,
-            hasPreviousContext: activeSessions.has(sessionId)
+            hasPreviousContext: activeSessions.has(sessionId),
+            recentStampsCount: recentStamps.length
         })
 
         // Create request key for deduplication
@@ -70,6 +76,19 @@ async function handleVoiceVectorSearchRequest(req, res) {
             }
         }
 
+        // Clean up old session contexts (older than 10 minutes)
+        for (const [sessionId, stamps] of sessionStampContext.entries()) {
+            const recentStamps = stamps.filter(stamp => now - stamp.timestamp < 600000) // 10 minutes
+            if (recentStamps.length === 0) {
+                sessionStampContext.delete(sessionId)
+                activeSessions.delete(sessionId)
+                console.log('🧹 Cleaned up old session context:', sessionId)
+            } else if (recentStamps.length !== stamps.length) {
+                sessionStampContext.set(sessionId, recentStamps)
+                console.log('🧹 Cleaned up old stamps from session:', sessionId)
+            }
+        }
+
         // Get previous response ID for conversation context
         const previousResponseId = activeSessions.get(sessionId)
 
@@ -85,6 +104,18 @@ async function handleVoiceVectorSearchRequest(req, res) {
                 console.log('🔍 Voice search with query:', transcript)
                 console.log('🔍 Using vector store ID:', VECTOR_STORE_ID)
 
+                // Build context-aware instructions for Assistants API
+                const contextInfo = recentStamps.length > 0 ? `
+PREVIOUS STAMP CONTEXT (from recent searches):
+${recentStamps.map((stamp, i) => `${i + 1}. ID: ${stamp.id}, Name: ${stamp.stampName}, Country: ${stamp.country}, Year: ${stamp.year}, Denomination: ${stamp.denomination}, Color: ${stamp.color}, Series: ${stamp.series}`).join('\n')}
+
+CONTEXT RULES:
+- When user says "compare it with...", "compare them", "compare both" → Use stamps from context + current search
+- When user says "compare [stamp1] and [stamp2]" → Find both stamps mentioned
+- When user says "compare [stamp] with [context_stamp]" → Use context stamp + search for new stamp
+- Always return at least 2 stamp IDs for comparison mode
+` : ''
+
                 // Create response with vector store access and voice-optimized instructions
                 const response = await openai.responses.create({
                     model: 'gpt-4o',
@@ -98,6 +129,8 @@ CRITICAL RULES - FOLLOW EXACTLY:
 2. If user asks to "compare" stamps → Return ONLY raw JSON with mode: "comparison" with MULTIPLE stamp IDs (NO markdown, NO text, NO lists, NO explanations)
 3. If user asks for "value", "worth", or "price" → Return ONLY short text with exact mintValue
 4. Keep ALL responses under 2 sentences maximum
+
+${contextInfo}
 
 SHOW REQUESTS - Return ONLY this exact JSON format (nothing else):
 {
@@ -295,6 +328,7 @@ Search the vector store for exact matches. Use exact data only.`,
 
                         console.log('🔧 Attempting to extract comparison data from text response')
                         console.log('🔧 Original transcript:', transcript)
+                        console.log('🔧 Recent stamps context:', recentStamps)
 
                         // Try to extract stamp IDs from the text response
                         const stampIdMatches = response.output_text.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/gi)
@@ -309,17 +343,58 @@ Search the vector store for exact matches. Use exact data only.`,
 
                             console.log('✅ Successfully extracted comparison data from text:', structured)
                         } else if (stampIdMatches && stampIdMatches.length === 1) {
-                            console.log('⚠️ Only found 1 stamp ID for comparison, need at least 2')
-                            console.log('⚠️ Single stamp ID found:', stampIdMatches[0])
-                            // Force comparison mode even with 1 stamp to trigger navigation
-                            structured = {
-                                mode: "comparison",
-                                stampIds: stampIdMatches
+                            console.log('⚠️ Only found 1 stamp ID for comparison, trying to use context')
+
+                            // Try to use context stamps for comparison
+                            if (recentStamps.length > 0) {
+                                const contextStampIds = recentStamps.map(stamp => stamp.id)
+                                const allStampIds = [...stampIdMatches, ...contextStampIds.filter(id => !stampIdMatches.includes(id))]
+
+                                if (allStampIds.length >= 2) {
+                                    structured = {
+                                        mode: "comparison",
+                                        stampIds: allStampIds.slice(0, 3)
+                                    }
+                                    console.log('✅ Using context stamps for comparison:', structured)
+                                } else {
+                                    // Force comparison mode even with 1 stamp to trigger navigation
+                                    structured = {
+                                        mode: "comparison",
+                                        stampIds: stampIdMatches
+                                    }
+                                    console.log('🔧 Forcing comparison mode with single stamp:', structured)
+                                }
+                            } else {
+                                // Force comparison mode even with 1 stamp to trigger navigation
+                                structured = {
+                                    mode: "comparison",
+                                    stampIds: stampIdMatches
+                                }
+                                console.log('🔧 Forcing comparison mode with single stamp:', structured)
                             }
-                            console.log('🔧 Forcing comparison mode with single stamp:', structured)
                         } else {
-                            console.log('❌ No stamp IDs found in comparison response')
-                            console.log('❌ Response text:', response.output_text.substring(0, 500))
+                            // No stamp IDs found in response, try to use context stamps
+                            console.log('❌ No stamp IDs found in comparison response, trying context')
+
+                            if (recentStamps.length >= 2) {
+                                const contextStampIds = recentStamps.map(stamp => stamp.id)
+                                structured = {
+                                    mode: "comparison",
+                                    stampIds: contextStampIds.slice(0, 3)
+                                }
+                                console.log('✅ Using context stamps for comparison:', structured)
+                            } else if (recentStamps.length === 1) {
+                                // Only one context stamp, need to search for another
+                                console.log('⚠️ Only 1 context stamp available, need to search for another')
+                                structured = {
+                                    mode: "clarify",
+                                    clarifyingQuestions: ["Which other stamp would you like to compare with?"]
+                                }
+                                console.log('🔧 Requesting clarification for comparison:', structured)
+                            } else {
+                                console.log('❌ No stamp IDs found and no context available')
+                                console.log('❌ Response text:', response.output_text.substring(0, 500))
+                            }
                         }
                     }
                 }
@@ -348,6 +423,31 @@ Search the vector store for exact matches. Use exact data only.`,
 
                         contentText = valueResponse
                     } else if (structured.mode === 'cards' && Array.isArray(structured.cards)) {
+                        // Store stamp context for future comparison requests
+                        structured.cards.forEach((card) => {
+                            if (card.id && card.stampName) {
+                                const stampContext = {
+                                    id: card.id,
+                                    stampName: card.stampName,
+                                    country: card.country || '',
+                                    year: card.year || '',
+                                    denomination: card.denomination || '',
+                                    color: card.color || '',
+                                    series: card.series || '',
+                                    timestamp: Date.now()
+                                }
+
+                                const currentContext = sessionStampContext.get(sessionId) || []
+                                // Remove duplicates and add new stamp
+                                const filteredContext = currentContext.filter(stamp => stamp.id !== card.id)
+                                filteredContext.push(stampContext)
+
+                                // Keep only last 5 stamps to avoid context bloat
+                                sessionStampContext.set(sessionId, filteredContext.slice(-5))
+                                console.log('💾 Stored stamp context for session:', sessionId, stampContext)
+                            }
+                        })
+
                         const toCardBlock = (c) => [
                             '## Stamp Information',
                             `**Stamp Name**: ${c.stampName || ''}`,
